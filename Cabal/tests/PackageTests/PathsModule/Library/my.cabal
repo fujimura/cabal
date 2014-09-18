@@ -13,3 +13,8 @@ description:
 Library
     exposed-modules: Paths_PathsModule
     build-depends: base
+
+Test-Suite test
+    main-is: Test.hs
+    type: exitcode-stdio-1.0
+    build-depends: base, HUnit
