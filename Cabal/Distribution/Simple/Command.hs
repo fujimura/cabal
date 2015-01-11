@@ -476,7 +476,7 @@ commandParseArgs command global args =
     (flags, opts, opts', [])
       | global || null opts' -> CommandReadyToGo (accum flags, mix opts opts')
       | otherwise            -> CommandErrors (unrecognised opts')
-    (_, _, _, errs)          -> CommandErrors errs
+    (_, _, _, errs)          -> CommandUnrecognised args
 
   where -- Note: It is crucial to use reverse function composition here or to
         -- reverse the flags here as we want to process the flags left to right
@@ -495,6 +495,7 @@ commandParseArgs command global args =
 data CommandParse flags = CommandHelp (String -> String)
                         | CommandList [String]
                         | CommandErrors [String]
+                        | CommandUnrecognised [String]
                         | CommandReadyToGo flags
 instance Functor CommandParse where
   fmap _ (CommandHelp help)       = CommandHelp help
@@ -535,6 +536,7 @@ commandsRun globalCommand commands args =
     CommandHelp      help          -> CommandHelp help
     CommandList      opts          -> CommandList (opts ++ commandNames)
     CommandErrors    errs          -> CommandErrors errs
+    CommandUnrecognised args'      -> CommandUnrecognised args'
     CommandReadyToGo (mkflags, args') -> case args' of
       ("help":cmdArgs) -> handleHelpCommand cmdArgs
       (name:cmdArgs)   -> case lookupCommand name of
@@ -548,8 +550,7 @@ commandsRun globalCommand commands args =
     lookupCommand cname = [ cmd | cmd@(Command cname' _ _ _) <- commands'
                                 , cname' == cname ]
     noCommand        = CommandErrors ["no command given (try --help)\n"]
-    badCommand cname = CommandErrors ["unrecognised command: " ++ cname
-                                   ++ " (try --help)\n"]
+    badCommand _     = CommandUnrecognised args
     commands'      = commands ++ [commandAddAction helpCommandUI undefined]
     commandNames   = [ name | (Command name _ _ NormalCommand) <- commands' ]
 
@@ -560,6 +561,7 @@ commandsRun globalCommand commands args =
         CommandHelp      help    -> CommandHelp help
         CommandList      list    -> CommandList (list ++ commandNames)
         CommandErrors    _       -> CommandHelp globalHelp
+        CommandUnrecognised args -> undefined -- TODO
         CommandReadyToGo (_,[])  -> CommandHelp globalHelp
         CommandReadyToGo (_,(name:cmdArgs')) ->
           case lookupCommand name of

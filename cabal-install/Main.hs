@@ -144,17 +144,20 @@ import qualified Paths_cabal_install (version)
 
 import System.Environment       (getArgs, getProgName)
 import System.Exit              (exitFailure)
-import System.FilePath          (splitExtension, takeExtension)
+import System.FilePath          (getSearchPath, splitExtension, takeExtension, (</>))
 import System.IO                ( BufferMode(LineBuffering), hSetBuffering
 #ifdef mingw32_HOST_OS
                                 , stderr
 #endif
                                 , stdout )
-import System.Directory         (doesFileExist, getCurrentDirectory)
-import Data.List                (intercalate)
+import System.Directory         (doesDirectoryExist, doesFileExist, getCurrentDirectory, getDirectoryContents)
+import System.Process           (callProcess)
+import Data.List                (intercalate, isPrefixOf)
 import Data.Maybe               (mapMaybe)
 import Data.Monoid              (Monoid(..))
-import Control.Monad            (when, unless)
+import Control.Monad            (filterM, when, unless)
+import Control.Applicative      ((<$>))
+import Control.Arrow            ((&&&))
 
 -- | Entry point
 --
@@ -177,7 +180,6 @@ mainWorker args = topHandler $
   case commandsRun (globalCommand commands) commands args of
     CommandHelp   help                 -> printGlobalHelp help
     CommandList   opts                 -> printOptionsList opts
-    CommandErrors errs                 -> printErrors errs
     CommandReadyToGo (globalFlags, commandParse)  ->
       case commandParse of
         _ | fromFlagOrDefault False (globalVersion globalFlags)
@@ -187,6 +189,11 @@ mainWorker args = topHandler $
         CommandHelp     help           -> printCommandHelp help
         CommandList     opts           -> printOptionsList opts
         CommandErrors   errs           -> printErrors errs
+        CommandUnrecognised (command:args') -> do
+          mPath <- lookup ("cabal-" ++ command) <$> getUserDefinedSubcommands
+          case mPath of
+            Just path -> callProcess path args'
+            Nothing   -> printErrors ["unrecognised command: " ++ command ++ " (try --help)\n"]
         CommandReadyToGo action        -> do
           globalFlags' <- updateSandboxConfigFileFlag globalFlags
           action globalFlags'
@@ -253,6 +260,16 @@ mainWorker args = topHandler $
       ,hiddenCommand $
        win32SelfUpgradeCommand`commandAddAction` win32SelfUpgradeAction
       ]
+
+    getUserDefinedSubcommands :: IO [(String, FilePath)]
+    getUserDefinedSubcommands =
+        concat <$> (getSearchPath >>= filterM doesDirectoryExist >>= mapM getCabalCommandsInDirectory)
+      where
+        isCabalCommand :: String -> Bool
+        isCabalCommand = isPrefixOf "cabal-"
+        getCabalCommandsInDirectory :: FilePath -> IO [(String, FilePath)]
+        getCabalCommandsInDirectory p =
+            map (id &&& (p </>)) . filter isCabalCommand <$> getDirectoryContents p
 
 wrapperAction :: Monoid flags
               => CommandUI flags
