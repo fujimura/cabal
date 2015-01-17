@@ -190,9 +190,10 @@ mainWorker args = topHandler $
         CommandList     opts           -> printOptionsList opts
         CommandErrors   errs           -> printErrors errs
         CommandUnrecognised (command:args') -> do
-          mPath <- lookup ("cabal-" ++ command) <$> getUserDefinedSubcommands
+          let prefixedCommand = "cabal-" ++ command
+          mPath <- lookup prefixedCommand <$> getUserDefinedSubcommands
           case mPath of
-            Just path -> callProcess path args'
+            Just path -> execAction (ExecFlags $ toFlag normal) (prefixedCommand:args') globalFlags
             Nothing   -> printErrors ["unrecognised command: " ++ command ++ " (try --help)\n"]
         CommandReadyToGo action        -> do
           globalFlags' <- updateSandboxConfigFileFlag globalFlags
